@@ -1,6 +1,6 @@
 use ascii_utils::Check;
 
-use pancurses::{chtype, endwin, initscr, noecho, Attribute, Attributes, ColorPair, Input};
+use pancurses::{chtype, endwin, initscr, noecho, Input};
 
 use std::sync::mpsc;
 
@@ -12,7 +12,6 @@ pub enum FrontMessage {
     Valid { character: Input, wpm: f32 },
     Invalid { character: Input, wpm: f32 },
     Backspace,
-    Space,
     Exit,
 }
 
@@ -30,7 +29,6 @@ pub enum FrontMessage {
 /// `forx` => **f**rontend **o**utput **r**eceiver.
 ///
 /// # Example
-///
 /// ```
 /// use frontend::FrontMessage;
 ///
@@ -63,36 +61,21 @@ pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>) {
                     continue;
                 }
             }
-            Some(Input::KeyBackspace) => println!("<-"),
+            Some(Input::KeyBackspace) => {
+                if let Err(error) = fitx.send(Input::KeyBackspace) {
+                    eprintln!("Error sending backspace to logic thread: {}", error);
+                    break;
+                }
+            }
             _ => continue,
         }
 
         match forx.recv() {
-            Ok(received) => {
-                match received {
-                    FrontMessage::Valid { character, .. } => {
-                        set_color(&window, GREEN_PAIR, true, true);
-                        add_char(&window, character, true);
-                    }
-                    FrontMessage::Invalid { character, .. } => {
-                        add_char(&window, character, false);
-                    }
-                    FrontMessage::Backspace => {
-                        let (y, x) = window.get_cur_yx();
-                        window.chgat(-1, pancurses::A_BOLD, GREY_PAIR as i16);
-                        window.mv(y, x - 1);
-                    }
-                    FrontMessage::Space => {
-                        window.mv(window.get_cur_y(), window.get_cur_x() + 1);
-                    }
-                    FrontMessage::Exit => {
-                        break;
-                    }
-                };
-            }
-            Err(_) => {
-                continue;
-            }
+            Ok(received) => match received {
+                FrontMessage::Exit => break,
+                _ => handle_message(&window, received),
+            },
+            Err(_) => continue,
         }
     }
 
@@ -110,7 +93,6 @@ fn init_frontend() -> pancurses::Window {
 
     pancurses::start_color();
     if pancurses::has_colors() {
-
         if pancurses::use_default_colors() == pancurses::OK {
             bg = -1;
         }
@@ -123,7 +105,7 @@ fn init_frontend() -> pancurses::Window {
     window
 }
 
-/// Sets or unsets a color and optionally boldness.
+/// Sets or unsets a color and optionally a boldness.
 ///
 /// # Example
 /// ```
@@ -143,8 +125,7 @@ fn set_color(window: &pancurses::Window, pair: chtype, bold: bool, enabled: bool
 
         if enabled {
             window.attrset(attr);
-        }
-        else {
+        } else {
             window.attroff(attr);
         }
     }
@@ -155,13 +136,49 @@ fn set_color(window: &pancurses::Window, pair: chtype, bold: bool, enabled: bool
 /// # Example
 /// ```
 /// let win = init_frontend();
-/// // Should print a bold green 'C'.
+/// // Should print a bold green 'c'.
 /// add_char(&win, Input::Character('c'), true);
 /// ```
 fn add_char(window: &pancurses::Window, input: Input, valid: bool) {
-    set_color(window, if valid {GREEN_PAIR} else {RED_PAIR}, true, true);
+    set_color(
+        window,
+        if valid { GREEN_PAIR } else { RED_PAIR },
+        true,
+        true,
+    );
 
     if let Input::Character(c) = input {
         window.addch(c);
     }
+}
+
+/// Handles a FrontMessage appropriately.
+///
+/// # Example
+/// ```
+/// let win = init_frontend();
+/// let received = FrontMessage::Valid {
+///     character: pancurses::Input::Character('c'),
+///     wpm: 0.
+/// };
+///
+/// // Should print a bold green 'c'.
+/// handle_message(&win, received);
+/// ```
+fn handle_message(window: &pancurses::Window, received: FrontMessage) {
+    match received {
+        FrontMessage::Valid { character, .. } => {
+            set_color(window, GREEN_PAIR, true, true);
+            add_char(window, character, true);
+        }
+        FrontMessage::Invalid { character, .. } => {
+            add_char(window, character, false);
+        }
+        FrontMessage::Backspace => {
+            let (y, x) = window.get_cur_yx();
+            window.mv(y, x - 1);
+            window.chgat(-1, pancurses::A_NORMAL, GREY_PAIR as i16);
+        }
+        _ => eprintln!("Unhandled forx case"),
+    };
 }

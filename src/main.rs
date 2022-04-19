@@ -9,20 +9,26 @@
 mod frontend;
 use frontend::FrontMessage;
 
+use pancurses::Input;
+
 use std::{sync::mpsc, thread};
 
 fn main() {
     println!("Hello, world!");
 
-    let (fitx, firx) = mpsc::channel::<pancurses::Input>();
+    let (fitx, firx) = mpsc::channel::<Input>();
     let (fotx, forx) = mpsc::channel::<FrontMessage>();
     let frontend_thread = thread::spawn(move || frontend::run(fitx, forx));
 
     loop {
         if let Ok(received) = firx.try_recv() {
-            if let Err(error) = fotx.send(FrontMessage::Valid {
-                character: received,
-                wpm: 0.,
+            if let Err(error) = fotx.send(match received {
+                Input::KeyBackspace => FrontMessage::Backspace,
+                Input::Character(_) => FrontMessage::Valid {
+                    character: received,
+                    wpm: 0.,
+                },
+                _ => continue,
             }) {
                 eprintln!("{}", error);
                 break;

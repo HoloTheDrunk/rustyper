@@ -10,13 +10,10 @@ pub enum TimerRequest {
 }
 
 pub enum TimerResponse {
-    Time {
-        since_epoch: Duration,
-        delta: Duration,
-    },
-    Stopped {
-        time: Duration,
-    },
+    /// Time since epoch and delta since last query
+    Time(Duration, Duration),
+    /// Final time
+    Stopped(Duration),
 }
 
 pub fn run(tirx: mpsc::Receiver<TimerRequest>, totx: mpsc::Sender<TimerResponse>) {
@@ -32,14 +29,9 @@ pub fn run(tirx: mpsc::Receiver<TimerRequest>, totx: mpsc::Sender<TimerResponse>
                 if let Err(error) = totx.send(match running {
                     true => {
                         previous = Instant::now();
-                        TimerResponse::Time {
-                            since_epoch: start.elapsed(),
-                            delta: previous.elapsed(),
-                        }
+                        TimerResponse::Time(start.elapsed(), previous.elapsed())
                     }
-                    false => TimerResponse::Stopped {
-                        time: previous - start,
-                    },
+                    false => TimerResponse::Stopped(previous - start),
                 }) {
                     eprintln!("Error getting from timer: {}", error);
                     break;

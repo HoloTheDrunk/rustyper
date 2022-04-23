@@ -21,11 +21,6 @@ use std::{
     time::Duration,
 };
 
-struct Statistics {
-    correct: u32,
-    incorrect: u32
-}
-
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
     if args.len() != 2 {
@@ -33,25 +28,27 @@ fn main() {
         return;
     }
 
-    let text = fs::read_to_string(args[0].clone()).expect("Unable to read file");
+    let text = fs::read_to_string(&args[1]).expect("Unable to read file");
 
+    let text_copy = text.clone();
     let (fitx, firx) = mpsc::channel::<Input>();
     let (fotx, forx) = mpsc::channel::<FrontMessage>();
-    let frontend_thread = thread::spawn(move || frontend::run(fitx, forx));
+    let frontend_thread = thread::spawn(move || frontend::run(fitx, forx, text_copy));
 
     let (titx, tirx) = mpsc::channel::<TimerRequest>();
     let (totx, torx) = mpsc::channel::<TimerResponse>();
     let timer_thread = thread::spawn(move || timer::run(tirx, totx));
 
-    main_loop(&firx, &fotx, &titx, &torx);
+    main_loop(
+        &firx,
+        &fotx,
+        &titx,
+        &torx,
+        &text.chars().map(|c| c as char).collect::<Vec<char>>(),
+    );
 
-    if let Err(message) = fotx.send(FrontMessage::Exit) {
-        eprintln!("Error terminating frontend: {}", message);
-    }
-
-    if frontend_thread.join().is_err() {
-        eprintln!("Error joining frontend thread.");
-    }
+    terminate_thread(frontend_thread, fotx, FrontMessage::Exit);
+    terminate_thread(timer_thread, titx, TimerRequest::Stop);
 }
 
 fn main_loop(
@@ -59,48 +56,110 @@ fn main_loop(
     fotx: &Sender<FrontMessage>,
     titx: &Sender<TimerRequest>,
     torx: &Receiver<TimerResponse>,
+    text: &[char],
 ) {
     if let Err(error) = titx.send(TimerRequest::Start) {
         eprintln!("Error starting timer: {}", error);
         return;
     }
 
-    let mut stats = Statistics { correct: 0, incorrect: 0 };
+    let mut validity: Vec<bool> = vec![];
+    let calculate_wpm = |validity: &Vec<bool>, time: &Duration| {
+        validity.iter().filter(|b: &&bool| **b).count() as f32 / 5. / (time.as_secs_f32() / 60.)
+    };
 
     // Wait for Input from frontend
     while let Ok(received) = firx.recv() {
+        //FIXME: hangs when deleting more than there is to delete
         // Send back the appropriate response after handling the Input
-        if let Err(error) = fotx.send(match received {
-            Input::KeyBackspace => FrontMessage::Backspace,
-            //TODO change stats, check for validity against text, etc...
-            Input::Character(_) => FrontMessage::Valid {
-                character: received,
-                wpm: 0.,
-            },
+        match received {
+            Input::KeyBackspace => {
+                if !validity.is_empty() {
+                    validity.pop();
+                    if !send_message(fotx, FrontMessage::Backspace) {
+                        break;
+                    }
+                } else if !send_message(fotx, FrontMessage::Nothing) {
+                    break;
+                }
+
+                continue;
+            }
+            Input::Character(c) => {
+                let mut time = Duration::default();
+                let mut deltas: Vec<Duration> = vec![];
+
+                // Send time get request
+                if let Err(error) = titx.send(TimerRequest::Get) {
+                    eprintln!("Error getting time from timer: {}", error);
+                    break;
+                }
+
+                // Wait for response and handle appropriately
+                if let Ok(state) = torx.recv() {
+                    match state {
+                        TimerResponse::Time(current, delta) => {
+                            time = current;
+                            deltas.push(delta);
+                        }
+                        TimerResponse::Stopped(last) => {
+                            eprintln!("Not running, last recorded time is {}s", last.as_secs())
+                        }
+                    }
+                }
+
+                // Check if the typed character is correct
+                validity.push(c == text[validity.len()]);
+
+                // Set message to send
+                let message = if *validity.last().unwrap() {
+                    FrontMessage::Valid {
+                        character: received,
+                        wpm: calculate_wpm(&validity, &time),
+                    }
+                } else {
+                    FrontMessage::Invalid {
+                        character: received,
+                        wpm: calculate_wpm(&validity, &time),
+                    }
+                };
+
+                if !send_message(fotx, message) {
+                    eprintln!("Error sending message to frontend.");
+                    break;
+                }
+
+                if validity.len() == text.len() {
+                    break;
+                }
+            }
             _ => continue,
-        }) {
-            eprintln!("{}", error);
-            break;
         }
     }
 
     if let Err(error) = titx.send(TimerRequest::Stop) {
-        eprintln!("Error starting timer: {}", error);
+        eprintln!("Error stopping timer: {}", error);
     }
 
     //TODO: Send final WPM
 }
 
-/*
-fn inpt() {
-  loop {
-      match window.getch() {
-          Some(Input::Character(c)) => { window.addch(c); },
-          Some(Input::KeyDC) => break,
-          Some(input) => { window.addstr(&format!("{:?}", input)); },
-          None => ()
-      }
-  }
-  endwin();
+fn send_message<T>(sender: &Sender<T>, message: T) -> bool {
+    match sender.send(message) {
+        Ok(_) => true,
+        Err(error) => {
+            eprintln!("{}", error);
+            false
+        }
+    }
 }
-*/
+
+fn terminate_thread<T>(thread: thread::JoinHandle<()>, sender: Sender<T>, kill_signal: T) {
+    if let Err(message) = sender.send(kill_signal) {
+        eprintln!("Error terminating frontend: {}", message);
+    }
+
+    if thread.join().is_err() {
+        eprintln!("Error joining frontend thread.");
+    }
+}

@@ -8,19 +8,20 @@ const GREY_PAIR: chtype = 1;
 const GREEN_PAIR: chtype = 2;
 const RED_PAIR: chtype = 3;
 
+/// Messages sent from other threads to the frontend thread.
 pub enum FrontMessage {
     Valid { character: Input, wpm: f32 },
     Invalid { character: Input, wpm: f32 },
     Backspace,
+    Nothing,
     Exit,
 }
 
-// pub struct Frontend {
-//     text: String
-// }
-//
-// impl Frontend {
-// }
+/// Internal state of the frontend.
+struct State {
+    text: String,
+    index: usize,
+}
 
 /// Runs the [pancurses] frontend until told to terminate by another thread.
 ///
@@ -44,10 +45,25 @@ pub enum FrontMessage {
 ///     eprintln!("Error joining frontend thread.");
 /// }
 /// ```
-pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>) {
-    println!("Spawning frontend thread");
-
+pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>, text: String) {
     let window = init_frontend();
+
+    // for word in text
+    //     .split_whitespace()
+    //     .map(|w| w.to_string())
+    //     .collect::<Vec<String>>()
+    // {
+    //     if window.get_cur_x() < window.get_max_x() - word.len() as i32 {
+    //         window.addstr(format!("{} ", word));
+    //     } else {
+    //         window.addstr(format!("{}\n", word));
+    //     }
+    // }
+
+    window.printw(text.clone());
+    window.mv(0, 0);
+
+    let mut state = State { text, index: 0 };
 
     loop {
         match window.getch() {
@@ -73,7 +89,7 @@ pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>) {
         match forx.recv() {
             Ok(received) => match received {
                 FrontMessage::Exit => break,
-                _ => handle_message(&window, received),
+                _ => handle_message(&window, received, &mut state),
             },
             Err(_) => continue,
         }
@@ -82,9 +98,9 @@ pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>) {
     endwin();
 }
 
+/// Initialize the [pancurses] [window](pancurses::Window).
 fn init_frontend() -> pancurses::Window {
     let window = initscr();
-    window.printw("Type things, press Ctrl+C to quit\n");
     window.refresh();
     window.keypad(true);
     noecho();
@@ -103,6 +119,35 @@ fn init_frontend() -> pancurses::Window {
     }
 
     window
+}
+
+/// Handles a FrontMessage appropriately.
+///
+/// # Example
+/// ```
+/// let win = init_frontend();
+/// let received = FrontMessage::Valid {
+///     character: pancurses::Input::Character('c'),
+///     wpm: 0.
+/// };
+///
+/// // Should print a bold green 'c'.
+/// handle_message(&win, received);
+/// ```
+fn handle_message(window: &pancurses::Window, received: FrontMessage, state: &mut State) {
+    match received {
+        FrontMessage::Valid { character, .. } => add_char(window, state, character, true),
+        FrontMessage::Invalid { character, .. } => add_char(window, state, character, false),
+        FrontMessage::Backspace => {
+            let (y, x) = window.get_cur_yx();
+            state.index -= 1;
+            window.mvaddch(y, x - 1, state.text.chars().nth(state.index).unwrap());
+            window.mv(y, x - 1);
+            window.chgat(1, pancurses::A_NORMAL, GREY_PAIR as i16);
+        }
+        FrontMessage::Nothing => {}
+        _ => eprintln!("Unhandled forx case"),
+    };
 }
 
 /// Sets or unsets a color and optionally a boldness.
@@ -139,7 +184,7 @@ fn set_color(window: &pancurses::Window, pair: chtype, bold: bool, enabled: bool
 /// // Should print a bold green 'c'.
 /// add_char(&win, Input::Character('c'), true);
 /// ```
-fn add_char(window: &pancurses::Window, input: Input, valid: bool) {
+fn add_char(window: &pancurses::Window, state: &mut State, input: Input, valid: bool) {
     set_color(
         window,
         if valid { GREEN_PAIR } else { RED_PAIR },
@@ -148,37 +193,13 @@ fn add_char(window: &pancurses::Window, input: Input, valid: bool) {
     );
 
     if let Input::Character(c) = input {
-        window.addch(c);
-    }
-}
+        state.index += 1;
 
-/// Handles a FrontMessage appropriately.
-///
-/// # Example
-/// ```
-/// let win = init_frontend();
-/// let received = FrontMessage::Valid {
-///     character: pancurses::Input::Character('c'),
-///     wpm: 0.
-/// };
-///
-/// // Should print a bold green 'c'.
-/// handle_message(&win, received);
-/// ```
-fn handle_message(window: &pancurses::Window, received: FrontMessage) {
-    match received {
-        FrontMessage::Valid { character, .. } => {
-            set_color(window, GREEN_PAIR, true, true);
-            add_char(window, character, true);
-        }
-        FrontMessage::Invalid { character, .. } => {
-            add_char(window, character, false);
-        }
-        FrontMessage::Backspace => {
+        if c == ' ' {
             let (y, x) = window.get_cur_yx();
-            window.mv(y, x - 1);
-            window.chgat(-1, pancurses::A_NORMAL, GREY_PAIR as i16);
+            window.mv(y, x + 1);
+        } else {
+            window.addch(c);
         }
-        _ => eprintln!("Unhandled forx case"),
-    };
+    }
 }

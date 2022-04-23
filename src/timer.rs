@@ -7,6 +7,7 @@ pub enum TimerRequest {
     Start,
     Get,
     Stop,
+    Exit,
 }
 
 pub enum TimerResponse {
@@ -38,6 +39,7 @@ pub fn run(tirx: mpsc::Receiver<TimerRequest>, totx: mpsc::Sender<TimerResponse>
                 }
             }
             TimerRequest::Stop => running = false,
+            TimerRequest::Exit => break,
         }
     }
 }

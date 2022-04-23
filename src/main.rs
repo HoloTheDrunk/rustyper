@@ -28,7 +28,10 @@ fn main() {
         return;
     }
 
-    let text = fs::read_to_string(&args[1]).expect("Unable to read file");
+    let text = fs::read_to_string(&args[1])
+        .expect("Unable to read file")
+        .trim()
+        .to_string();
 
     let text_copy = text.clone();
     let (fitx, firx) = mpsc::channel::<Input>();
@@ -39,7 +42,7 @@ fn main() {
     let (totx, torx) = mpsc::channel::<TimerResponse>();
     let timer_thread = thread::spawn(move || timer::run(tirx, totx));
 
-    main_loop(
+    let result = main_loop(
         &firx,
         &fotx,
         &titx,
@@ -48,7 +51,15 @@ fn main() {
     );
 
     terminate_thread(frontend_thread, fotx, FrontMessage::Exit);
-    terminate_thread(timer_thread, titx, TimerRequest::Stop);
+    terminate_thread(timer_thread, titx, TimerRequest::Exit);
+
+    println!("Text: {}", text);
+
+    if let Ok(wpm) = result {
+        println!(" WPM: {:.2}", wpm);
+    } else {
+        eprintln!("Main loop returned an error.");
+    }
 }
 
 fn main_loop(
@@ -57,10 +68,10 @@ fn main_loop(
     titx: &Sender<TimerRequest>,
     torx: &Receiver<TimerResponse>,
     text: &[char],
-) {
+) -> Result<f32, ()> {
     if let Err(error) = titx.send(TimerRequest::Start) {
         eprintln!("Error starting timer: {}", error);
-        return;
+        return Err(());
     }
 
     let mut validity: Vec<bool> = vec![];
@@ -141,7 +152,16 @@ fn main_loop(
         eprintln!("Error stopping timer: {}", error);
     }
 
-    //TODO: Send final WPM
+    if titx.send(TimerRequest::Get).is_ok() {
+        if let Ok(TimerResponse::Stopped(time)) = torx.recv() {
+            Ok(calculate_wpm(&validity, &time))
+        } else {
+            Err(())
+        }
+    } else {
+        eprintln!("Error getting final time from timer.");
+        Err(())
+    }
 }
 
 fn send_message<T>(sender: &Sender<T>, message: T) -> bool {

@@ -48,18 +48,6 @@ struct State {
 pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>, text: String) {
     let window = init_frontend();
 
-    // for word in text
-    //     .split_whitespace()
-    //     .map(|w| w.to_string())
-    //     .collect::<Vec<String>>()
-    // {
-    //     if window.get_cur_x() < window.get_max_x() - word.len() as i32 {
-    //         window.addstr(format!("{} ", word));
-    //     } else {
-    //         window.addstr(format!("{}\n", word));
-    //     }
-    // }
-
     window.printw(text.clone());
     window.mv(0, 0);
 

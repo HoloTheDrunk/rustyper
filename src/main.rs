@@ -25,7 +25,7 @@ use std::{
 #[doc(hidden)]
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
-    if args.is_empty() {
+    if args.len() != 2 {
         eprintln!("Invalid arguments.\nUsage: rustype path");
         return;
     }

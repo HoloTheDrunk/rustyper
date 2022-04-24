@@ -4,6 +4,7 @@ use pancurses::{chtype, endwin, initscr, noecho, Input};
 
 use std::sync::mpsc;
 
+#[doc(hidden)]
 const GREY_PAIR: chtype = 1;
 const GREEN_PAIR: chtype = 2;
 const RED_PAIR: chtype = 3;
@@ -45,9 +46,12 @@ struct State {
 ///     eprintln!("Error joining frontend thread.");
 /// }
 /// ```
+///
+/// [pancurses]: https://docs.rs/pancurses/latest/pancurses
 pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>, text: String) {
     let window = init_frontend();
 
+    set_color(&window, GREY_PAIR, false, true);
     window.printw(text.clone());
     window.mv(0, 0);
 
@@ -86,7 +90,10 @@ pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>, text: 
     endwin();
 }
 
-/// Initialize the [pancurses] [window](pancurses::Window).
+/// Initialize the [pancurses] [window].
+///
+/// [pancurses]: https://docs.rs/pancurses/latest/pancurses/
+/// [window]: https://docs.rs/pancurses/latest/pancurses/struct.Window.html
 fn init_frontend() -> pancurses::Window {
     let window = initscr();
     window.refresh();
@@ -109,7 +116,7 @@ fn init_frontend() -> pancurses::Window {
     window
 }
 
-/// Handles a FrontMessage appropriately.
+/// Handles a [FrontMessage] appropriately.
 ///
 /// # Example
 /// ```
@@ -127,8 +134,11 @@ fn handle_message(window: &pancurses::Window, received: FrontMessage, state: &mu
         FrontMessage::Valid { character, .. } => add_char(window, state, character, true),
         FrontMessage::Invalid { character, .. } => add_char(window, state, character, false),
         FrontMessage::Backspace => {
-            let (y, x) = window.get_cur_yx();
             state.index -= 1;
+
+            // Move left one, re-add original character, move left again then
+            // reset attributes for the reset character.
+            let (y, x) = window.get_cur_yx();
             window.mvaddch(y, x - 1, state.text.chars().nth(state.index).unwrap());
             window.mv(y, x - 1);
             window.chgat(1, pancurses::A_NORMAL, GREY_PAIR as i16);
@@ -185,6 +195,9 @@ fn add_char(window: &pancurses::Window, state: &mut State, input: Input, valid: 
 
         if c == ' ' {
             let (y, x) = window.get_cur_yx();
+            if !valid {
+                window.chgat(1, pancurses::A_BOLD, RED_PAIR as i16);
+            }
             window.mv(y, x + 1);
         } else {
             window.addch(c);

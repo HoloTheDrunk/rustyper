@@ -8,3 +8,7 @@ edition = "2021"
 [dependencies]
 pancurses = "^0.17"
 ascii_utils = "^0.9"
+
+[[bin]]
+name = "rustyper"
+path = "src/rustyper/main.rs"

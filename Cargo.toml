@@ -12,3 +12,7 @@ ascii_utils = "^0.9"
 [[bin]]
 name = "rustyper"
 path = "src/rustyper/main.rs"
+
+[[bin]]
+name = "pitch_drop"
+path = "src/pitch_drop/main.rs"

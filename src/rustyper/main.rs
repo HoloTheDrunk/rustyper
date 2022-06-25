@@ -22,15 +22,39 @@ use std::{
     thread,
 };
 
+use clap::Parser;
+
+#[derive(Parser)]
+#[clap(author, version, about, long_about = None)]
+#[clap(group(
+        clap::ArgGroup::new("mode")
+            .required(true)
+            .args(&["path", "random"]),))]
+struct Args {
+    /// Path of the desired text
+    #[clap(short, long, action)]
+    path: Option<String>,
+
+    /// Call to backend for random text
+    #[clap(short, long, action)]
+    random: bool,
+}
+
 #[doc(hidden)]
 fn main() {
-    let args = std::env::args().collect::<Vec<String>>();
-    if args.len() != 2 {
-        eprintln!("Invalid arguments.\nUsage: rustype path");
+    // let args = std::env::args().collect::<Vec<String>>();
+    // if args.len() != 2 {
+    //     eprintln!("Invalid arguments.\nUsage: rustype path");
+    //     return;
+    // }
+    let args = Args::parse();
+
+    if args.path.is_none() {
+        eprintln!("No file path provided");
         return;
     }
 
-    let text = fs::read_to_string(&args[1])
+    let text = fs::read_to_string(args.path.unwrap())
         .expect("Unable to read file")
         .trim()
         .to_string();

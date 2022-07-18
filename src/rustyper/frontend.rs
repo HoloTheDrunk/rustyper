@@ -14,6 +14,7 @@ pub enum FrontMessage {
     Valid { character: Input, wpm: f32 },
     Invalid { character: Input, wpm: f32 },
     Backspace,
+    Return,
     Nothing,
     Exit,
 }
@@ -65,12 +66,16 @@ pub fn run(fitx: mpsc::Sender<Input>, forx: mpsc::Receiver<FrontMessage>, text: 
                         eprintln!("Error sending character {} to logic thread: {}", c, error);
                         break;
                     }
-                } else {
-                    continue;
                 }
             }
             Some(Input::KeyBackspace) => {
                 if let Err(error) = fitx.send(Input::KeyBackspace) {
+                    eprintln!("Error sending backspace to logic thread: {}", error);
+                    break;
+                }
+            }
+            Some(Input::KeyEnter) => {
+                if let Err(error) = fitx.send(Input::KeyEnter) {
                     eprintln!("Error sending backspace to logic thread: {}", error);
                     break;
                 }

@@ -7,14 +7,13 @@
 //! [EPITA]: https://epita.it
 
 mod frontend;
-use frontend::FrontMessage;
-
 mod logic;
-
 mod timer;
-use timer::{TimerRequest, TimerResponse};
 
-use pancurses::Input;
+use crate::{
+    frontend::FrontMessage,
+    timer::{TimerRequest, TimerResponse},
+};
 
 use std::{
     fs,
@@ -22,7 +21,7 @@ use std::{
     thread,
 };
 
-use clap::Parser;
+use {clap::Parser, pancurses::Input};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -42,22 +41,28 @@ struct Args {
 
 #[doc(hidden)]
 fn main() {
-    // let args = std::env::args().collect::<Vec<String>>();
-    // if args.len() != 2 {
-    //     eprintln!("Invalid arguments.\nUsage: rustype path");
-    //     return;
-    // }
     let args = Args::parse();
 
-    if args.path.is_none() {
+    if !args.random && args.path.is_none() {
         eprintln!("No file path provided");
         return;
     }
 
-    let text = fs::read_to_string(args.path.unwrap())
-        .expect("Unable to read file")
-        .trim()
-        .to_string();
+    let text = if args.random {
+        reqwest::blocking::get("https://insult.mattbas.org/api/insult.txt")
+            .unwrap()
+            .text()
+            .unwrap()
+    } else {
+        fs::read_to_string(args.path.unwrap())
+            .expect("Unable to read file")
+            .trim()
+            .to_string()
+    };
+
+    println!("{text}");
+
+    std::process::exit(1);
 
     let text_copy = text.clone();
     let (fitx, firx) = mpsc::channel::<Input>();

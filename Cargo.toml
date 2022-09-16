@@ -10,6 +10,7 @@ default-run = "rustyper"
 pancurses = "^0.17"
 ascii_utils = "^0.9"
 clap = { version = "3.2.6", features = ["clap_derive", "derive"] }
+reqwest = { version = "0.11.11", features = ["blocking"] }
 
 [[bin]]
 name = "rustyper"

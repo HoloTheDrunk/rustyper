@@ -9,7 +9,7 @@ const LIFE_EXPECTANCY: u64 = 1_500;
 #[doc(hidden)]
 const LIQUID_QTY: u64 = 5;
 #[doc(hidden)]
-const PERIOD: u64 = 3_750;
+const PERIOD: u64 = 4_242;
 
 #[doc(hidden)]
 fn main() {
@@ -26,8 +26,6 @@ fn main() {
             if *state == 0 {
                 println!("Experiment ended in observer {}'s lifetime.", observer);
                 break;
-            } else {
-                println!("Remaining experiment duration: {}.", *state);
             }
         }
 
@@ -48,6 +46,7 @@ fn pitch_drop(state: Arc<Mutex<u64>>, period: u64) {
         if let Ok(mut state) = state.lock() {
             *state -= 1;
             println!("\x1b[34mplop\x1b[0m");
+            println!("Remaining experiment duration: {}.", *state);
 
             if *state == 0 {
                 break;

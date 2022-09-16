@@ -8,15 +8,14 @@ use std::{
     time::Duration,
 };
 
-struct State<'text, 'channels>
-{
+struct State<'text, 'channels> {
     text: &'text [char],
     validity: Vec<bool>,
     calculate_wpm: Box<dyn Fn(&Vec<bool>, &Duration) -> f32>,
     _firx: &'channels Receiver<Input>,
     fotx: &'channels Sender<FrontMessage>,
     titx: &'channels Sender<TimerRequest>,
-    torx: &'channels Receiver<TimerResponse>
+    torx: &'channels Receiver<TimerResponse>,
 }
 
 /// Main loop of the program where all the test logic and wpm calculation
@@ -65,8 +64,16 @@ pub fn run(
 
                 continue;
             }
-            Input::KeyEnter => if handle_character('\n', received, &mut state).is_err() { break; },
-            Input::Character(c) => if handle_character(c, received, &mut state).is_err() { break; },
+            Input::KeyEnter => {
+                if handle_character('\n', received, &mut state).is_err() {
+                    break;
+                }
+            }
+            Input::Character(c) => {
+                if handle_character(c, received, &mut state).is_err() {
+                    break;
+                }
+            }
             _ => continue,
         }
     }
